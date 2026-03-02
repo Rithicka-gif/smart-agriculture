@@ -1,0 +1,508 @@
+# ============================================================
+# 🌾 SMART AGRICULTURE AI SYSTEM
+# Crop Disease Detection + Crop Recommendation
+# Developed by Sri 💚
+# ============================================================
+
+# =========================
+# IMPORT LIBRARIES
+# =========================
+
+import streamlit as st
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from PIL import Image
+import json
+import joblib
+
+# =========================
+# PAGE CONFIGURATION
+# =========================
+
+st.set_page_config(
+    page_title="Smart Agriculture AI",
+    page_icon="🌾",
+    layout="centered"
+)
+
+st.title("🌾 Smart Agriculture AI System")
+st.markdown("AI-powered Crop Safeguarder")
+
+
+import base64
+
+def set_background(image_file):
+    with open(image_file, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+
+    page_bg_img = f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/jpg;base64,{encoded}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }}
+    </style>
+    """
+
+    st.markdown(page_bg_img, unsafe_allow_html=True)
+
+# Call function
+set_background("backgroud_image.jpg")
+
+
+# ============================================================
+# SIDEBAR OPTION
+# ============================================================
+
+
+# Sidebar Service Selector (Old Radio Button Style)
+st.sidebar.title("🌿 Select Service")
+option = st.sidebar.radio(
+    "Choose an Option",
+    [
+        "Crop Disease Detection",
+        "Crop Recommendation",           # old crop recommendation
+        "Soil-to-Crop Recommendation",   # new soil-to-crop model
+        "Climate Modelling"
+    ]
+)
+# =========================
+# LOAD MODELS
+# =========================
+import tensorflow as tf
+import joblib
+import pandas as pd
+import streamlit as st
+
+# -------------------------
+# Load Disease Detection Model
+# -------------------------
+@st.cache_resource
+def load_disease_model():
+    model = tf.keras.models.load_model("model.keras")
+    return model
+
+# -------------------------
+# Load Old Crop Recommendation Model
+# -------------------------
+@st.cache_resource
+def load_crop_model():
+    # Make sure these files exist in your project folder
+    model = joblib.load("crop_model.pkl")      # replace with actual model filename
+    scaler = joblib.load("crop_scaler.pkl")    # replace with actual scaler filename
+    return model, scaler
+
+# -------------------------
+# Load Dataset for Old Crop Recommendation
+# -------------------------
+@st.cache_data
+def load_dataset():
+    # Make sure this CSV exists in your project folder
+    data = pd.read_csv("Crop_recommendation.csv")        # replace with actual CSV filename
+    return data
+
+
+# ---- Soil-to-Crop Recommendation Model ----
+@st.cache_resource
+def load_soil_crop_model():
+    model = tf.keras.models.load_model("smart_soil_crop_model.h5")
+    scaler = joblib.load("soil_scaler.pkl")
+    encoder = joblib.load("crop_label_encoder.pkl")
+    return model, scaler, encoder
+
+# ============================================================
+# DISEASE INFORMATION DATABASE
+# ============================================================
+
+disease_info = {
+
+# ---------------- APPLE ----------------
+"Apple___Apple_scab": {
+    "description": "Fungal disease causing olive-green or brown spots on leaves and fruits.",
+    "remedy": "Spray Mancozeb or Captan fungicide every 7–10 days.",
+    "prevention": "Ensure good air circulation and remove fallen leaves."
+},
+
+"Apple___Black_rot": {
+    "description": "Dark rot lesions on fruits and circular leaf spots.",
+    "remedy": "Prune infected branches and apply Thiophanate-methyl.",
+    "prevention": "Maintain orchard sanitation."
+},
+
+"Apple___Cedar_apple_rust": {
+    "description": "Yellow-orange spots on leaves caused by fungal infection.",
+    "remedy": "Apply Myclobutanil fungicide.",
+    "prevention": "Remove nearby cedar trees if possible."
+},
+
+"Apple___healthy": {
+    "description": "The apple plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Maintain proper irrigation and fertilization."
+},
+
+# ---------------- POTATO ----------------
+"Potato___Early_blight": {
+    "description": "Brown concentric rings on leaves.",
+    "remedy": "Apply Chlorothalonil.",
+    "prevention": "Crop rotation."
+},
+
+"Potato___Late_blight": {
+    "description": "Dark water-soaked lesions spreading quickly.",
+    "remedy": "Apply Metalaxyl immediately.",
+    "prevention": "Avoid excess irrigation."
+},
+
+"Potato___healthy": {
+    "description": "The potato plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Proper soil drainage."
+}
+
+}
+
+
+# ============================================================
+# 🌿 CROP DISEASE DETECTION
+# ============================================================
+
+if option == "Crop Disease Detection":
+
+    st.header("🌿 Crop Disease Detection")
+
+    model = load_disease_model()
+    
+    class_names = [
+    "Apple___Apple_scab",
+    "Apple___Black_rot",
+    "Apple___Cedar_apple_rust",
+    "Apple___healthy",
+    "Potato___Early_blight",
+    "Potato___Late_blight",
+    "Potato___healthy"
+]
+
+    uploaded_file = st.file_uploader(
+        "Upload Leaf Image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded_file is not None:
+
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Leaf Image", use_column_width=True)
+
+        # Preprocess
+        img = image.resize((224, 224))
+        img_array = np.array(img) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+
+        prediction = model.predict(img_array)
+        predicted_class = class_names[np.argmax(prediction)]
+        confidence = float(np.max(prediction)) * 100
+
+        st.success(f"🌱 Predicted Disease: {predicted_class}")
+        st.info(f"🔍 Confidence: {confidence:.2f}%")
+
+        # Show disease details
+        if predicted_class in disease_info:
+            info = disease_info[predicted_class]
+
+            st.subheader("🦠 Description")
+            st.write(info["description"])
+
+            st.subheader("💊 Remedy")
+            st.write(info["remedy"])
+
+            st.subheader("🛡 Prevention")
+            st.write(info["prevention"])
+        else:
+            st.warning("No additional information available.")
+
+# ============================================================
+# SOIL-TO-CROP RECOMMENDATION
+# ============================================================
+elif option == "Soil-to-Crop Recommendation":
+
+    st.header("🌱 Soil-to-Crop Recommendation")
+    soil_model, scaler, encoder = load_soil_crop_model()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        temperature = st.number_input("Temperature (°C)", 0, 50, 25)
+        humidity = st.number_input("Humidity (%)", 0, 100, 50)
+        moisture = st.number_input("Moisture (%)", 0, 100, 40)
+        nitrogen = st.number_input("Nitrogen (ppm)", 0, 100, 10)
+        phosphorous = st.number_input("Phosphorous (ppm)", 0, 100, 10)
+    with col2:
+        potassium = st.number_input("Potassium (ppm)", 0, 100, 10)
+        soil_type = st.selectbox("Soil Type", ["Sandy","Loamy","Clayey","Red","Black"])
+        ph = st.number_input("pH", 0.0, 14.0, 7.0)
+
+    if st.button("🌾 Recommend Crop"):
+        # Moisture Level
+        if moisture < 35: moisture_level = "Low"
+        elif 35 <= moisture <= 60: moisture_level = "Medium"
+        else: moisture_level = "High"
+        # pH Category
+        if ph < 6.5: ph_category = "Acidic"
+        elif 6.5 <= ph <= 7.5: ph_category = "Neutral"
+        else: ph_category = "Alkaline"
+        # Soil Score
+        soil_score = 0
+        soil_score += 40 if ph_category=="Neutral" else 20
+        soil_score += 30 if moisture_level=="Medium" else 10
+        nutrient_score = min((nitrogen+phosphorous+potassium)/3,30)
+        soil_score += nutrient_score
+        # Input DataFrame
+        input_dict = {
+            "Temparature":[temperature],
+            "Humidity":[humidity],
+            "Moisture":[moisture],
+            "Nitrogen":[nitrogen],
+            "Phosphorous":[phosphorous],
+            "Potassium":[potassium],
+            "Soil_Suitability_Score":[soil_score],
+            # Soil Type
+            "Soil Type_Sandy":[1 if soil_type=="Sandy" else 0],
+            "Soil Type_Loamy":[1 if soil_type=="Loamy" else 0],
+            "Soil Type_Clayey":[1 if soil_type=="Clayey" else 0],
+            "Soil Type_Red":[1 if soil_type=="Red" else 0],
+            "Soil Type_Black":[1 if soil_type=="Black" else 0],
+            # pH Category
+            "pH_Category_Acidic":[1 if ph_category=="Acidic" else 0],
+            "pH_Category_Neutral":[1 if ph_category=="Neutral" else 0],
+            "pH_Category_Alkaline":[1 if ph_category=="Alkaline" else 0],
+            # Moisture Level
+            "Moisture_Level_Low":[1 if moisture_level=="Low" else 0],
+            "Moisture_Level_Medium":[1 if moisture_level=="Medium" else 0],
+            "Moisture_Level_High":[1 if moisture_level=="High" else 0]
+        }
+        input_df = pd.DataFrame(input_dict)
+        input_scaled = scaler.transform(input_df)
+        pred = soil_model.predict(input_scaled)
+        recommended_crop = encoder.inverse_transform([np.argmax(pred)])
+        st.success(f"🌾 Recommended Crop: {recommended_crop[0]}")
+
+# =====================================================
+# 🌍 CLIMATE MODELLING
+# =====================================================
+
+if option == "Climate Modelling":
+
+    st.header("🌍 Climate Modelling & Future Prediction")
+
+    st.subheader("Enter Current Climate Conditions")
+
+    # ---------------------------
+    # Input with Clear Ranges
+    # ---------------------------
+
+    temperature = st.number_input(
+        "Enter Temperature (0.00 to 50.00 °C):",
+        min_value=0.00,
+        max_value=50.00,
+        value=25.00,
+        step=0.01,
+        format="%.2f"
+    )
+    st.caption("Optimal Temperature Range: 20°C – 35°C")
+
+    humidity = st.number_input(
+        "Enter Humidity (0.00 to 100.00 %):",
+        min_value=0.00,
+        max_value=100.00,
+        value=60.00,
+        step=0.01,
+        format="%.2f"
+    )
+    st.caption("Optimal Humidity Range: 50% – 80%")
+
+    rainfall = st.number_input(
+        "Enter Rainfall (0.00 to 500.00 mm):",
+        min_value=0.00,
+        max_value=500.00,
+        value=100.00,
+        step=0.01,
+        format="%.2f"
+    )
+    st.caption("Rainfall < 50mm → Drought Risk | Rainfall > 200mm → Flood Risk")
+
+    # ---------------------------
+    # Analysis Button
+    # ---------------------------
+
+    if st.button("Analyze Climate"):
+
+        # ---------------------------
+        # Suitability Logic
+        # ---------------------------
+        if 20 <= temperature <= 35 and 50 <= humidity <= 80:
+            suitability = "High 🌱"
+        elif temperature < 15 or rainfall < 30:
+            suitability = "Low ⚠"
+        else:
+            suitability = "Moderate 🌿"
+
+        # ---------------------------
+        # Risk Analysis
+        # ---------------------------
+        drought_risk = "High 🔥" if rainfall < 50 else "Low"
+        flood_risk = "High 🌊" if rainfall > 200 else "Low"
+
+        # ---------------------------
+        # Future Climate Simulation
+        # ---------------------------
+        future_temperature = temperature + 1.5
+        future_rainfall = rainfall * 0.9
+
+        # ---------------------------
+        # Display Results
+        # ---------------------------
+        st.subheader("📊 Climate Analysis Result")
+        st.write("🌾 Suitability Level:", suitability)
+        st.write("🔥 Drought Risk:", drought_risk)
+        st.write("🌊 Flood Risk:", flood_risk)
+
+        st.subheader("🔮 Future Climate Projection (2050)")
+        st.write("🌡 Future Temperature:", round(future_temperature, 2), "°C")
+        st.write("🌧 Future Rainfall:", round(future_rainfall, 2), "mm")
+
+        # ---------------------------
+        # Visual Graph
+        # ---------------------------
+        st.subheader("📈 Temperature Projection Graph")
+
+        import matplotlib.pyplot as plt
+
+        years = ["Current", "2050"]
+        temps = [temperature, future_temperature]
+
+        fig, ax = plt.subplots()
+        ax.plot(years, temps)
+        ax.set_ylabel("Temperature (°C)")
+        ax.set_title("Future Temperature Increase")
+
+        st.pyplot(fig)
+
+# ============================================================
+# 🌱 SOIL-TO-CROP RECOMMENDATION
+# ============================================================
+
+elif option == "Soil-to-Crop Recommendation":
+
+    import pandas as pd
+    import numpy as np
+
+    st.header("🌱 Soil-to-Crop Recommendation")
+
+    # =========================
+# LOAD SOIL-TO-CROP MODEL
+# =========================
+import tensorflow as tf
+import joblib
+import streamlit as st
+
+@st.cache_resource
+def load_soil_crop_model():
+    """
+    Loads the Soil-to-Crop model, scaler, and label encoder.
+    """
+    model = tf.keras.models.load_model("smart_soil_crop_model.h5")  # trained model
+    scaler = joblib.load("soil_scaler.pkl")                          # trained scaler
+    encoder = joblib.load("crop_label_encoder.pkl")                  # label encoder
+    return model, scaler, encoder
+
+    # ---------------------------
+    # Input Soil/Environment Parameters
+    # ---------------------------
+    col1, col2 = st.columns(2)
+    with col1:
+        temperature = st.number_input("Temperature (°C)", 0, 50, 25)
+        humidity = st.number_input("Humidity (%)", 0, 100, 50)
+        moisture = st.number_input("Moisture (%)", 0, 100, 40)
+        nitrogen = st.number_input("Nitrogen (ppm)", 0, 100, 10)
+        phosphorous = st.number_input("Phosphorous (ppm)", 0, 100, 10)
+    with col2:
+        potassium = st.number_input("Potassium (ppm)", 0, 100, 10)
+        soil_type = st.selectbox("Soil Type", ["Sandy", "Loamy", "Clayey", "Red", "Black"])
+        ph = st.number_input("pH", 0.0, 14.0, 7.0)
+
+    if st.button("🌾 Recommend Crop"):
+
+        # ---------------------------
+        # Feature Engineering
+        # ---------------------------
+        # Moisture Level
+        if moisture < 35:
+            moisture_level = "Low"
+        elif 35 <= moisture <= 60:
+            moisture_level = "Medium"
+        else:
+            moisture_level = "High"
+
+        # pH Category
+        if ph < 6.5:
+            ph_category = "Acidic"
+        elif 6.5 <= ph <= 7.5:
+            ph_category = "Neutral"
+        else:
+            ph_category = "Alkaline"
+
+        # Soil Suitability Score
+        soil_score = 0
+        soil_score += 40 if ph_category == "Neutral" else 20
+        soil_score += 30 if moisture_level == "Medium" else 10
+        nutrient_score = min((nitrogen + phosphorous + potassium) / 3, 30)
+        soil_score += nutrient_score
+
+        # ---------------------------
+        # Build Input DataFrame
+        # ---------------------------
+        input_dict = {
+            "Temparature": [temperature],
+            "Humidity": [humidity],
+            "Moisture": [moisture],
+            "Nitrogen": [nitrogen],
+            "Phosphorous": [phosphorous],
+            "Potassium": [potassium],
+            "Soil_Suitability_Score": [soil_score],
+            # One-hot Soil Type
+            "Soil Type_Sandy": [1 if soil_type == "Sandy" else 0],
+            "Soil Type_Loamy": [1 if soil_type == "Loamy" else 0],
+            "Soil Type_Clayey": [1 if soil_type == "Clayey" else 0],
+            "Soil Type_Red": [1 if soil_type == "Red" else 0],
+            "Soil Type_Black": [1 if soil_type == "Black" else 0],
+            # One-hot pH Category
+            "pH_Category_Acidic": [1 if ph_category == "Acidic" else 0],
+            "pH_Category_Neutral": [1 if ph_category == "Neutral" else 0],
+            "pH_Category_Alkaline": [1 if ph_category == "Alkaline" else 0],
+            # One-hot Moisture Level
+            "Moisture_Level_Low": [1 if moisture_level == "Low" else 0],
+            "Moisture_Level_Medium": [1 if moisture_level == "Medium" else 0],
+            "Moisture_Level_High": [1 if moisture_level == "High" else 0]
+        }
+
+        input_df = pd.DataFrame(input_dict)
+
+        # ---------------------------
+        # Scale and Predict
+        # ---------------------------
+        input_scaled = scaler.transform(input_df)
+        pred = soil_model.predict(input_scaled)
+        recommended_crop = encoder.inverse_transform([np.argmax(pred)])
+
+        # ---------------------------
+        # Display Result
+        # ---------------------------
+        st.success(f"🌾 Recommended Crop: {recommended_crop[0]}")
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown("---")
+st.markdown("👩‍💻 Developed by RITHICKA MURUGAN | 🌾 SMART AGRICULTURE AI SYSTEM")

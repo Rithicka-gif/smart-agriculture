@@ -1,0 +1,467 @@
+# ============================================================
+# 🌾 SMART AGRICULTURE AI SYSTEM
+# Crop Disease Detection + Soil-to-Crop Recommendation
+# Developed by Sri 💚
+# ============================================================
+
+import streamlit as st
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from PIL import Image
+import joblib
+import base64
+
+# =========================
+# 1. PAGE CONFIGURATION
+# =========================
+st.set_page_config(
+    page_title="Smart Agriculture AI",
+    page_icon="🌾",
+    layout="centered"
+)
+
+# Function to set background
+def set_background(image_file):
+    try:
+        with open(image_file, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+        page_bg_img = f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/jpg;base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        [data-testid="stHeader"] {{background: rgba(0,0,0,0);}}
+        .stMarkdown {{color: white;}}
+        </style>
+        """
+        st.markdown(page_bg_img, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning("Background image not found. Please check 'backgroud_image.jpg' path.")
+
+set_background("backgroud_image.jpg")
+
+# =========================
+# 2. LOAD MODELS (Cached)
+# =========================
+@st.cache_resource
+def load_models():
+    # Disease Detection Model
+    disease_model = tf.keras.models.load_model("model.keras")
+    
+    # Soil-to-Crop Assets
+    soil_model = tf.keras.models.load_model("smart_soil_crop_model.h5")
+    soil_scaler = joblib.load("soil_preprocessor.pkl")
+    crop_encoder = joblib.load("crop_label_encoder.pkl")
+    
+    return disease_model, soil_model, soil_scaler, crop_encoder
+
+try:
+    disease_model, soil_model, soil_scaler, crop_encoder = load_models()
+except Exception as e:
+    st.error(f"Error loading models: {e}. Ensure all .keras, .h5, and .pkl files are in the directory.")
+
+# =========================
+# 3. SIDEBAR NAVIGATION
+# =========================
+st.sidebar.title("🌿 Agri-Smart Menu")
+option = st.sidebar.radio(
+    "Select Service",
+    ["Crop Disease Detection", "Soil-to-Crop Recommendation", "Climate Modelling"]
+)
+
+# app.py
+import streamlit as st
+import tensorflow as tf
+import numpy as np
+import json
+from PIL import Image
+import base64
+import os
+
+# ---------------------------
+# Page Config (MUST BE FIRST)
+# ---------------------------
+st.set_page_config(page_title="Crop Disease Detection", page_icon="🌱")
+
+# ---------------------------
+# Background Function
+# ---------------------------
+def set_bg(image_file):
+    with open(image_file, "rb") as img:
+        encoded = base64.b64encode(img.read()).decode()
+
+    page_bg = f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/jpg;base64,{encoded}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+
+    .stApp::before {{
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.3);  /* lighter overlay */
+        z-index: -1;
+    }}
+    </style>
+    """
+
+    st.markdown(page_bg, unsafe_allow_html=True)
+
+# Call background AFTER page config
+set_bg("backgroud_image.jpg")
+
+# ---------------------------
+# Title
+# ---------------------------
+st.markdown(
+    "<h1 style='text-align: center; color: white;'>Crop Disease Detection</h1>",
+    unsafe_allow_html=True
+)
+
+
+st.markdown(
+    """
+    <h4 style='color: white;'>Upload a crop leaf image to detect the disease and get remedy.</h4>
+    <p style='color: white; font-weight: 600;'>Choose an image:</p>
+    """,
+    unsafe_allow_html=True
+)
+# ---------------------------
+# Load Model & Class Names
+# ---------------------------
+@st.cache_resource
+def load_model_and_classes():
+    model = tf.keras.models.load_model("model.keras")
+    with open("class_names.json", "r") as f:
+        class_names = json.load(f)
+    return model, class_names
+
+model, class_names = load_model_and_classes()
+
+# ---------------------------
+# Disease Information Database
+# ---------------------------
+disease_info = {
+
+# ---------------- APPLE ----------------
+"Apple___Apple_scab": {
+    "description": "Fungal disease causing olive-green or brown spots on leaves and fruits.",
+    "remedy": "Spray Mancozeb or Captan fungicide every 7–10 days.",
+    "prevention": "Ensure good air circulation and remove fallen leaves."
+},
+
+"Apple___Black_rot": {
+    "description": "Dark rot lesions on fruits and circular leaf spots.",
+    "remedy": "Prune infected branches and apply Thiophanate-methyl.",
+    "prevention": "Maintain orchard sanitation."
+},
+
+"Apple___Cedar_apple_rust": {
+    "description": "Yellow-orange spots on leaves caused by fungal infection.",
+    "remedy": "Apply Myclobutanil fungicide.",
+    "prevention": "Remove nearby cedar trees if possible."
+},
+
+"Apple___healthy": {
+    "description": "The apple plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Maintain proper irrigation and fertilization."
+},
+
+# ---------------- BLUEBERRY ----------------
+"Blueberry___healthy": {
+    "description": "The blueberry plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Ensure proper soil acidity and watering."
+},
+
+# ---------------- CHERRY ----------------
+"Cherry_(including_sour)___Powdery_mildew": {
+    "description": "White powdery fungal growth on leaves.",
+    "remedy": "Apply Sulfur or Potassium bicarbonate spray.",
+    "prevention": "Improve air circulation."
+},
+
+"Cherry_(including_sour)___healthy": {
+    "description": "The cherry plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Regular pruning and monitoring."
+},
+
+# ---------------- CORN ----------------
+"Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot": {
+    "description": "Rectangular gray lesions on leaves.",
+    "remedy": "Apply Azoxystrobin fungicide.",
+    "prevention": "Rotate crops and use resistant hybrids."
+},
+
+"Corn_(maize)___Common_rust_": {
+    "description": "Reddish-brown pustules on leaves.",
+    "remedy": "Apply Propiconazole fungicide.",
+    "prevention": "Plant resistant varieties."
+},
+
+"Corn_(maize)___Northern_Leaf_Blight": {
+    "description": "Long gray-green lesions on leaves.",
+    "remedy": "Use Mancozeb spray.",
+    "prevention": "Crop rotation and debris removal."
+},
+
+"Corn_(maize)___healthy": {
+    "description": "The corn plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Balanced fertilization."
+},
+
+# ---------------- GRAPE ----------------
+"Grape___Black_rot": {
+    "description": "Black spots on leaves and shriveled fruits.",
+    "remedy": "Apply Mancozeb or Myclobutanil.",
+    "prevention": "Remove infected berries."
+},
+
+"Grape___Esca_(Black_Measles)": {
+    "description": "Dark streaks in wood and spotted leaves.",
+    "remedy": "Remove infected vines.",
+    "prevention": "Avoid pruning wounds during wet weather."
+},
+
+"Grape___Leaf_blight_(Isariopsis_Leaf_Spot)": {
+    "description": "Brown irregular leaf spots.",
+    "remedy": "Apply Copper-based fungicide.",
+    "prevention": "Ensure good drainage."
+},
+
+"Grape___healthy": {
+    "description": "The grape plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Regular vineyard maintenance."
+},
+
+# ---------------- ORANGE ----------------
+"Orange___Haunglongbing_(Citrus_greening)": {
+    "description": "Yellow shoots and bitter fruits caused by bacterial infection.",
+    "remedy": "Remove infected trees immediately.",
+    "prevention": "Control psyllid insects."
+},
+
+# ---------------- PEACH ----------------
+"Peach___Bacterial_spot": {
+    "description": "Dark lesions on leaves and fruits.",
+    "remedy": "Apply Copper spray.",
+    "prevention": "Avoid overhead irrigation."
+},
+
+"Peach___healthy": {
+    "description": "The peach plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Maintain orchard hygiene."
+},
+
+# ---------------- PEPPER ----------------
+"Pepper,_bell___Bacterial_spot": {
+    "description": "Water-soaked spots on leaves and fruits.",
+    "remedy": "Apply Copper-based bactericide.",
+    "prevention": "Use disease-free seeds."
+},
+
+"Pepper,_bell___healthy": {
+    "description": "The pepper plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Proper spacing and watering."
+},
+
+# ---------------- POTATO ----------------
+"Potato___Early_blight": {
+    "description": "Brown concentric rings on leaves.",
+    "remedy": "Apply Chlorothalonil.",
+    "prevention": "Crop rotation."
+},
+
+"Potato___Late_blight": {
+    "description": "Dark water-soaked lesions spreading quickly.",
+    "remedy": "Apply Metalaxyl immediately.",
+    "prevention": "Avoid excess irrigation."
+},
+
+"Potato___healthy": {
+    "description": "The potato plant appears healthy.",
+    "remedy": "No treatment required.",
+    "prevention": "Proper soil drainage."
+}
+
+}
+
+# ---------------------------
+# Upload Image
+# ---------------------------
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    # Preprocess image
+    image = image.resize((224, 224))
+    img_array = np.array(image) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    # Predict
+    prediction = model.predict(img_array)
+    class_index = np.argmax(prediction)
+    confidence = np.max(prediction) * 100
+    predicted_class = class_names[class_index]
+
+    st.success(f"🌾 Prediction: {predicted_class}")
+    st.info(f"Confidence: {confidence:.2f}%")
+
+    # ---------------------------
+    # Show Disease Details
+    # ---------------------------
+    st.subheader("🧾 Disease Details")
+
+    if "healthy" in predicted_class.lower():
+        st.success("🌿 The plant appears healthy!")
+        st.info("Maintain proper watering, sunlight, and balanced fertilization.")
+    else:
+        if predicted_class in disease_info:
+            info = disease_info[predicted_class]
+
+            disease_name = predicted_class.split("___")[1].replace("_", " ")
+
+            st.write(f"### 🦠 Disease: {disease_name}")
+            st.write("### 📌 Description")
+            st.write(info["description"])
+
+            st.write("### 💊 Remedy")
+            st.success(info["remedy"])
+
+            st.write("### 🌾 Prevention / Avoidance Technique")
+            st.info(info["prevention"])
+        else:
+            st.warning("Detailed remedy not available for this disease yet.")
+
+# ============================================================
+# 1. LOAD SOIL-TO-CROP MODEL (Outside the loop for efficiency)
+# ============================================================
+@st.cache_resource
+def load_soil_crop_model():
+    # Ensure these files exist in your folder
+    model = tf.keras.models.load_model("smart_soil_crop_model.h5")
+    scaler = joblib.load("soil_preprocessor.pkl")
+    encoder = joblib.load("crop_label_encoder.pkl")
+    return model, scaler, encoder
+
+# ============================================================
+# 2. CLIMATE MODELLING SECTION
+# ============================================================
+if option == "Climate Modelling":
+    st.header("🌍 Climate Modelling & Future Prediction")
+    st.subheader("Enter Current Climate Conditions")
+
+    temperature = st.number_input("Temperature (°C):", 0.0, 50.0, 25.0, step=0.01, format="%.2f")
+    st.caption("Optimal: 20°C – 35°C")
+
+    humidity = st.number_input("Humidity (%):", 0.0, 100.0, 60.0, step=0.01, format="%.2f")
+    st.caption("Optimal: 50% – 80%")
+
+    rainfall = st.number_input("Rainfall (mm):", 0.0, 500.0, 100.0, step=0.01, format="%.2f")
+    st.caption("Risk: <50mm Drought | >200mm Flood")
+
+    if st.button("Analyze Climate"):
+        # Logic
+        suitability = "High 🌱" if (20 <= temperature <= 35 and 50 <= humidity <= 80) else ("Low ⚠" if (temperature < 15 or rainfall < 30) else "Moderate 🌿")
+        drought_risk = "High 🔥" if rainfall < 50 else "Low"
+        flood_risk = "High 🌊" if rainfall > 200 else "Low"
+
+        # Projection
+        future_temp = temperature + 1.5
+        future_rain = rainfall * 0.9
+
+        st.subheader("📊 Results")
+        col1, col2, col3 = st.columns(3)
+        col1.write(f"**Suitability:** {suitability}")
+        col2.write(f"**Drought:** {drought_risk}")
+        col3.write(f"**Flood:** {flood_risk}")
+
+        st.subheader("🔮 2050 Projection")
+        st.write(f"🌡 Temp: {round(future_temp, 2)}°C | 🌧 Rain: {round(future_rain, 2)}mm")
+
+# ============================================================
+# 3. SOIL-TO-CROP RECOMMENDATION SECTION
+# ============================================================
+elif option == "Soil-to-Crop Recommendation":
+    st.header("🌱 Soil-to-Crop AI Recommendation")
+    
+    # Load assets
+    try:
+        soil_model, scaler, encoder = load_soil_crop_model()
+    except Exception as e:
+        st.error(f"Error loading model files: {e}")
+        st.stop()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        temperature = st.number_input("Temperature (°C)", 0, 50, 25)
+        humidity = st.number_input("Humidity (%)", 0, 100, 50)
+        moisture = st.number_input("Moisture (%)", 0, 100, 40)
+        nitrogen = st.number_input("Nitrogen (ppm)", 0, 150, 50)
+    with col2:
+        phosphorous = st.number_input("Phosphorous (ppm)", 0, 150, 50)
+        potassium = st.number_input("Potassium (ppm)", 0, 250, 50)
+        soil_type_input = st.selectbox("Soil Type", ["Sandy", "Loamy", "Clayey", "Red", "Black"])
+        ph_input = st.number_input("pH Level", 0.0, 14.0, 7.0)
+
+    if st.button("🌾 Recommend Crop"):
+        # 1. Feature Engineering (Generate raw categories)
+        m_lvl = "Low" if moisture < 35 else ("Medium" if moisture <= 60 else "High")
+        p_cat = "Acidic" if ph_input < 6.5 else ("Neutral" if ph_input <= 7.5 else "Alkaline")
+        
+        # Soil Score Calculation
+        s_score = (40 if p_cat == "Neutral" else 20) + (30 if m_lvl == "Medium" else 10)
+        s_score += min((nitrogen + phosphorous + potassium) / 3, 30)
+
+        # 2. Build Raw Input DataFrame
+        # IMPORTANT: Use the exact names your Preprocessor saw during training.
+        # Do NOT manually create 'Soil Type_Sandy', etc.
+        input_dict = {
+            "Temparature": [temperature], 
+            "Humidity": [humidity], 
+            "Moisture": [moisture],
+            "Nitrogen": [nitrogen], 
+            "Phosphorous": [phosphorous], 
+            "Potassium": [potassium],
+            "Soil_Suitability_Score": [s_score],
+            "Soil Type": [soil_type_input],      # The preprocessor will encode this
+            "pH_Category": [p_cat],             # The preprocessor will encode this
+            "Moisture_Level": [m_lvl]            # The preprocessor will encode this
+        }
+        
+        input_df = pd.DataFrame(input_dict)
+        
+        try:
+            # 3. Transform and Predict
+            # The 'scaler' (ColumnTransformer) handles the One-Hot encoding automatically
+            input_scaled = scaler.transform(input_df)
+            
+            prediction = soil_model.predict(input_scaled)
+            result_idx = np.argmax(prediction)
+            crop_name = encoder.inverse_transform([result_idx])[0]
+            
+            st.success(f"### 🌾 Recommended Crop: **{crop_name}**")
+            st.balloons()
+        except Exception as e:
+            st.error(f"Prediction Error: {e}")
+            st.info("Ensure the column names in input_dict match your CSV headers exactly.")
